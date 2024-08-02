@@ -1,0 +1,43 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+  # https://github.com/containerd/containerd/blob/7a804489fdd528cc052071ce47d0217f3c6bcea9/docs/NRI.md?plain=1#L67
+- |-
+  [plugins."io.containerd.nri.v1.nri"]
+    disable = false
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    scheduler:
+        extraArgs:
+          v: "5"
+          vmodule: "allocator=6,dynamicresources=6" # structured/allocator.go, DRA scheduler plugin
+    controllerManager:
+        extraArgs:
+          v: "5"
+    apiServer:
+        extraArgs:
+          runtime-config: "resource.k8s.io/v1alpha3=true"
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        v: "5"
+- role: worker
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        v: "5"
+- role: worker
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        v: "5"
+featureGates:
+  DynamicResourceAllocation: true

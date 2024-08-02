@@ -1,0 +1,75 @@
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: network-driver
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: network-driver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: network-driver
+subjects:
+- kind: ServiceAccount
+  name: network-driver
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: network-driver
+  namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: network-driver
+  namespace: kube-system
+  labels:
+    tier: node
+    app: network-driver
+    k8s-app: network-driver
+spec:
+  selector:
+    matchLabels:
+      app: network-driver
+  template:
+    metadata:
+      labels:
+        tier: node
+        app: network-driver
+        k8s-app: network-driver
+    spec:
+      hostNetwork: true
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      serviceAccountName: network-driver
+      containers:
+      - name: network-driver
+        args:
+        - --="4"
+        image: aojea/kube-network-driver:stable
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "50Mi"
+          limits:
+            cpu: "100m"
+            memory: "50Mi"
+        securityContext:
+          privileged: true
+          capabilities:
+            add: ["NET_ADMIN"]
+        volumeMounts:
+        - name: device-plugin
+          mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+      - name: device-plugin
+        hostPath:
+          path: /var/lib/kubelet/device-plugins
+          type: DirectoryOrCreate
+---
