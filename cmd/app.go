@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	nodeutil "k8s.io/component-helpers/node/util"
 	"k8s.io/klog/v2"
 )
@@ -21,9 +22,11 @@ const (
 
 var (
 	hostnameOverride string
+	kubeconfig       string
 )
 
 func init() {
+	flag.StringVar(&kubeconfig, "", "absolute path to the kubeconfig file")
 	flag.StringVar(&hostnameOverride, "hostname-override", "", "If non-empty, will be used as the name of the Node that kube-network-policies is running on. If unset, the node name is assumed to be the same as the node's hostname.")
 
 	flag.Usage = func() {
@@ -38,15 +41,16 @@ func Main() int {
 
 	klog.Infof("flags: %v", flag.Args())
 
-	nodeName, err := nodeutil.GetHostname(hostnameOverride)
-	if err != nil {
-		klog.Fatalf("can not obtain the node name, use the hostname-override flag if you want to set it to a specific value: %v", err)
+	var config *rest.Config
+	var err error
+	if kubeconfig != "" {
+		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+	} else {
+		// creates the in-cluster config
+		config, err = rest.InClusterConfig()
 	}
-
-	// creates the in-cluster config
-	config, err := rest.InClusterConfig()
 	if err != nil {
-		panic(err.Error())
+		klog.Fatalf("can not create client-go configuration: %v", err)
 	}
 
 	// use protobuf for better performance at scale
@@ -57,7 +61,12 @@ func Main() int {
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err.Error())
+		klog.Fatalf("can not create client-go client: %v", err)
+	}
+
+	nodeName, err := nodeutil.GetHostname(hostnameOverride)
+	if err != nil {
+		klog.Fatalf("can not obtain the node name, use the hostname-override flag if you want to set it to a specific value: %v", err)
 	}
 
 	// trap Ctrl+C and call cancel on the context
