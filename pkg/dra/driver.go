@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Mellanox/rdmamap"
 	"github.com/aojea/kubernetes-network-driver/pkg/nri"
 	"github.com/vishvananda/netlink"
 
@@ -127,6 +128,10 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			if np.regex != nil && !np.regex.MatchString(iface.Name) {
 				continue
 			}
+			// TODO skip interfaces that are down ???
+			if iface.Flags&net.FlagUp == 0 {
+				continue
+			}
 			// skip loopback interface
 			if iface.Flags&net.FlagLoopback == 1 {
 				continue
@@ -159,11 +164,6 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			// iface attributes
 			linkType := link.Type()
 			linkAttrs := link.Attrs()
-			// skip interfaces that are not up
-			if linkAttrs.OperState != netlink.OperUp {
-				continue
-			}
-
 			ethInfo, err := ethtoolDriverInfo(iface.Name)
 			if err != nil {
 				klog.Warningf("Error getting ethtool information by name %v", err)
@@ -187,6 +187,12 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			device.Basic.Attributes["bus"] = resourceapi.DeviceAttribute{StringValue: &busInfo}
 			eromVersion := string(bytes.TrimRight(ethInfo.Erom_version[:], "\x00"))
 			device.Basic.Attributes["rom"] = resourceapi.DeviceAttribute{VersionValue: &eromVersion}
+			isRDMA := rdmamap.IsRDmaDeviceForNetdevice(iface.Name)
+			device.Basic.Attributes["rdma"] = resourceapi.DeviceAttribute{BoolValue: &isRDMA}
+			// from https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin/blob/ed1c14dd4c313c7dd9fe4730a60358fbeffbfdd4/pkg/netdevice/netDeviceProvider.go#L99
+			isSRIOV := sriovTotalVFs(iface.Name) > 0
+			device.Basic.Attributes["sriov"] = resourceapi.DeviceAttribute{BoolValue: &isSRIOV}
+
 			resources.Devices = append(resources.Devices, device)
 		}
 

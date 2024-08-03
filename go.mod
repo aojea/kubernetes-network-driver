@@ -3,6 +3,7 @@ module github.com/aojea/kubernetes-network-driver
 go 1.22.0
 
 require (
+	github.com/Mellanox/rdmamap v1.1.0
 	github.com/containerd/nri v0.6.1
 	github.com/containernetworking/plugins v1.5.1
 	github.com/vishvananda/netlink v1.2.1-beta.2

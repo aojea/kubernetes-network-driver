@@ -1,11 +1,20 @@
 package dra
 
 import (
+	"bytes"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	"k8s.io/klog/v2"
+)
+
+const (
+	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-net
+	sysfsnet = "/sys/class/net/"
 )
 
 func getDefaultGwIf() (string, error) {
@@ -52,4 +61,36 @@ func ethtoolDriverInfo(name string) (*unix.EthtoolDrvinfo, error) {
 	}
 	defer unix.Close(fd)
 	return unix.IoctlGetEthtoolDrvinfo(fd, name)
+}
+
+func sriovTotalVFs(name string) int {
+	totalVfsPath := sysfsnet + name + "/device/sriov_totalvfs"
+	totalBytes, err := os.ReadFile(totalVfsPath)
+	if err != nil {
+		klog.V(4).Infof("error trying to get total VFs for device %s: %v", name, err)
+		return 0
+	}
+	total := bytes.TrimSpace(totalBytes)
+	t, err := strconv.Atoi(string(total))
+	if err != nil {
+		klog.Errorf("Error in obtaining maximum supported number of virtual functions for network interface: %s: %v", name, err)
+		return 0
+	}
+	return t
+}
+
+func sriovNumVFs(name string) int {
+	numVfsPath := sysfsnet + name + "/device/sriov_numvfs"
+	numBytes, err := os.ReadFile(numVfsPath)
+	if err != nil {
+		klog.V(4).Infof("error trying to get number of VFs for device %s: %v", name, err)
+		return 0
+	}
+	num := bytes.TrimSpace(numBytes)
+	t, err := strconv.Atoi(string(num))
+	if err != nil {
+		klog.Errorf("Error in obtaining number of virtual functions for network interface: %s: %v", name, err)
+		return 0
+	}
+	return t
 }
