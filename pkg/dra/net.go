@@ -15,6 +15,7 @@ import (
 const (
 	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-net
 	sysfsnet = "/sys/class/net/"
+	sysfspci = "/sys/devices/"
 )
 
 func getDefaultGwIf() (string, error) {
@@ -61,6 +62,12 @@ func ethtoolDriverInfo(name string) (*unix.EthtoolDrvinfo, error) {
 	}
 	defer unix.Close(fd)
 	return unix.IoctlGetEthtoolDrvinfo(fd, name)
+}
+
+// https://docs.kernel.org/PCI/sysfs-pci.html
+// https://unix.stackexchange.com/questions/607818/identify-pci-device-providing-network-interface
+func getPCIAddress(name string) string {
+	return ""
 }
 
 func sriovTotalVFs(name string) int {

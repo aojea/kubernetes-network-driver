@@ -164,6 +164,9 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			// iface attributes
 			linkType := link.Type()
 			linkAttrs := link.Attrs()
+
+			// Thid does not work on some virtualized interfaces
+			// https://portal.nutanix.com/page/documents/kbs/details?targetId=kA07V000000LXRnSAO
 			ethInfo, err := ethtoolDriverInfo(iface.Name)
 			if err != nil {
 				klog.Warningf("Error getting ethtool information by name %v", err)
@@ -183,8 +186,9 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			device.Basic.Attributes["version"] = resourceapi.DeviceAttribute{VersionValue: &driverVersion}
 			fwVersion := string(bytes.TrimRight(ethInfo.Fw_version[:], "\x00"))
 			device.Basic.Attributes["firmware"] = resourceapi.DeviceAttribute{VersionValue: &fwVersion}
+			// pci address
 			busInfo := string(bytes.TrimRight(ethInfo.Bus_info[:], "\x00"))
-			device.Basic.Attributes["bus"] = resourceapi.DeviceAttribute{StringValue: &busInfo}
+			device.Basic.Attributes["bus-info"] = resourceapi.DeviceAttribute{StringValue: &busInfo}
 			eromVersion := string(bytes.TrimRight(ethInfo.Erom_version[:], "\x00"))
 			device.Basic.Attributes["rom"] = resourceapi.DeviceAttribute{VersionValue: &eromVersion}
 			isRDMA := rdmamap.IsRDmaDeviceForNetdevice(iface.Name)
