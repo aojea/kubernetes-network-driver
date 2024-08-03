@@ -6,12 +6,17 @@ import (
 	"slices"
 	"time"
 
+	"github.com/aojea/kubernetes-network-driver/pkg/nri"
+
+	"github.com/containerd/nri/pkg/stub"
+
 	resourceapi "k8s.io/api/resource/v1alpha3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	"k8s.io/klog/v2"
 	drapb "k8s.io/kubelet/pkg/apis/dra/v1alpha4"
 )
 
@@ -21,12 +26,32 @@ type NetworkPlugin struct {
 	driverName string
 	kubeClient kubernetes.Interface
 	draPlugin  kubeletplugin.DRAPlugin
+	nriPlugin  *nri.Plugin
 }
 
-func NewPlugin(ctx context.Context, driverName string, kubeClient kubernetes.Interface, nodeName string) (*NetworkPlugin, error) {
+func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interface, nodeName string) (*NetworkPlugin, error) {
 	plugin := &NetworkPlugin{
 		driverName: driverName,
 		kubeClient: kubeClient,
+		nriPlugin:  &nri.Plugin{},
+	}
+
+	nriOpts := []stub.Option{
+		stub.WithPluginName(driverName),
+		stub.WithPluginIdx("00"),
+	}
+
+	stub, err := stub.New(plugin.nriPlugin, nriOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create plugin stub: %v", err)
+	}
+
+	plugin.nriPlugin.Stub = stub
+
+	err = plugin.nriPlugin.Stub.Run(ctx)
+	if err != nil {
+		klog.Infof("NRI plugin failed to start with error %v", err)
+		return nil, err
 	}
 
 	opts := []kubeletplugin.Option{
@@ -61,6 +86,11 @@ func NewPlugin(ctx context.Context, driverName string, kubeClient kubernetes.Int
 		return nil, err
 	}
 	return plugin, nil
+}
+
+func (np *NetworkPlugin) Stop() {
+	np.nriPlugin.Stub.Stop()
+	np.draPlugin.Stop()
 }
 
 func (np *NetworkPlugin) NodePrepareResources(ctx context.Context, request *drapb.NodePrepareResourcesRequest) (*drapb.NodePrepareResourcesResponse, error) {

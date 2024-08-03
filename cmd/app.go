@@ -3,44 +3,63 @@ package cmd
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 
+	"github.com/aojea/kubernetes-network-driver/pkg/dra"
 	"golang.org/x/sys/unix"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	nodeutil "k8s.io/component-helpers/node/util"
 	"k8s.io/klog/v2"
-
-	"github.com/aojea/kubernetes-network-driver/pkg/nri"
-
-	"github.com/containerd/nri/pkg/stub"
 )
 
 const (
-	// https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/
-	kubeletSocket = "kubelet.sock"
-	pluginSocket  = "netdevice.sock"
-	pluginName    = "netdevice"
-	resourceName  = "networking.dra.k8s.io"
+	driverName = "networking.k8s.io/dra"
 )
 
+var (
+	hostnameOverride string
+)
+
+func init() {
+	flag.StringVar(&hostnameOverride, "hostname-override", "", "If non-empty, will be used as the name of the Node that kube-network-policies is running on. If unset, the node name is assumed to be the same as the node's hostname.")
+
+	flag.Usage = func() {
+		fmt.Fprint(os.Stderr, "Usage: kube-network-driver [options]\n\n")
+		flag.PrintDefaults()
+	}
+}
+
 func Main() int {
-	// pluginPath := path.Join(pluginapi.DevicePluginPath, pluginSocket)
-
-	var (
-		pluginName string
-		pluginIdx  string
-		opts       []stub.Option
-		err        error
-		verbose    bool
-	)
-
-	flag.StringVar(&pluginName, "name", "", "plugin name to register to NRI")
-	flag.StringVar(&pluginIdx, "idx", "", "plugin index to register to NRI")
-	flag.BoolVar(&verbose, "verbose", false, "enable (more) verbose logging")
-
 	klog.InitFlags(nil)
 	flag.Parse()
 
 	klog.Infof("flags: %v", flag.Args())
+
+	nodeName, err := nodeutil.GetHostname(hostnameOverride)
+	if err != nil {
+		klog.Fatalf("can not obtain the node name, use the hostname-override flag if you want to set it to a specific value: %v", err)
+	}
+
+	// creates the in-cluster config
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// use protobuf for better performance at scale
+	// https://kubernetes.io/docs/reference/using-api/api-concepts/#alternate-representations-of-resources
+	config.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	config.ContentType = "application/vnd.kubernetes.protobuf"
+
+	// creates the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+
 	// trap Ctrl+C and call cancel on the context
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -53,23 +72,12 @@ func Main() int {
 	}()
 	signal.Notify(signalCh, os.Interrupt, unix.SIGINT)
 
-	if pluginName != "" {
-		opts = append(opts, stub.WithPluginName(pluginName))
-	}
-	if pluginIdx != "" {
-		opts = append(opts, stub.WithPluginIdx(pluginIdx))
-	}
-
-	p := &nri.Plugin{}
-	if p.Stub, err = stub.New(p, opts...); err != nil {
-		klog.Fatalf("failed to create plugin stub: %v", err)
-	}
-
-	err = p.Stub.Run(ctx)
+	driver, err := dra.Start(ctx, driverName, clientset, nodeName)
 	if err != nil {
-		klog.Infof("plugin exited with error %v", err)
+		klog.Info("driver failed to start: %v", err)
 		return 1
 	}
+	defer driver.Stop()
 
 	select {
 	case <-signalCh:
