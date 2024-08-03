@@ -26,7 +26,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&kubeconfig, "", "absolute path to the kubeconfig file")
+	flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	flag.StringVar(&hostnameOverride, "hostname-override", "", "If non-empty, will be used as the name of the Node that kube-network-policies is running on. If unset, the node name is assumed to be the same as the node's hostname.")
 
 	flag.Usage = func() {
