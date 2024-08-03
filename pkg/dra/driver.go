@@ -1,16 +1,21 @@
 package dra
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net"
+	"regexp"
 	"slices"
 	"time"
 
 	"github.com/aojea/kubernetes-network-driver/pkg/nri"
+	"github.com/vishvananda/netlink"
 
 	"github.com/containerd/nri/pkg/stub"
 
 	resourceapi "k8s.io/api/resource/v1alpha3"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -27,6 +32,9 @@ type NetworkPlugin struct {
 	kubeClient kubernetes.Interface
 	draPlugin  kubeletplugin.DRAPlugin
 	nriPlugin  *nri.Plugin
+
+	ifaceGw string
+	regex   *regexp.Regexp
 }
 
 func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interface, nodeName string) (*NetworkPlugin, error) {
@@ -35,6 +43,12 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 		kubeClient: kubeClient,
 		nriPlugin:  &nri.Plugin{},
 	}
+
+	ifaceGw, err := getDefaultGwIf()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interface for the default route: %v", err)
+	}
+	plugin.ifaceGw = ifaceGw
 
 	nriOpts := []stub.Option{
 		stub.WithPluginName(driverName),
@@ -64,17 +78,6 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 		return nil, fmt.Errorf("start kubelet plugin: %w", err)
 	}
 	plugin.draPlugin = d
-	var resources kubeletplugin.Resources
-	for _, deviceName := range []string{"fake-device"} {
-		device := resourceapi.Device{
-			Name:  deviceName,
-			Basic: &resourceapi.BasicDevice{},
-		}
-		resources.Devices = append(resources.Devices, device)
-	}
-
-	plugin.draPlugin.PublishResources(ctx, resources)
-
 	err = wait.PollUntilContextTimeout(ctx, 1*time.Second, 30*time.Second, true, func(context.Context) (bool, error) {
 		status := plugin.draPlugin.RegistrationStatus()
 		if status == nil {
@@ -85,12 +88,125 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 	if err != nil {
 		return nil, err
 	}
+	// publish available resources
+	go plugin.PublishResources(ctx)
 	return plugin, nil
 }
 
 func (np *NetworkPlugin) Stop() {
 	np.nriPlugin.Stub.Stop()
 	np.draPlugin.Stop()
+}
+
+func (np *NetworkPlugin) PublishResources(ctx context.Context) {
+	klog.V(2).Infof("Publishing resources")
+
+	// Resources are published periodically or if there is a netlink notification
+	// indicating a new interfaces was added or changed
+	nlChannel := make(chan netlink.LinkUpdate)
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+	if err := netlink.LinkSubscribe(nlChannel, doneCh); err != nil {
+		klog.Infof("error subscring to netlink interfaces: %v", err)
+	}
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for {
+		ifaces, err := net.Interfaces()
+		if err != nil {
+			klog.Infof("error getting system interfaces: %v", err)
+		}
+		resources := kubeletplugin.Resources{}
+		for _, iface := range ifaces {
+			klog.V(2).Infof("Checking iface %s", iface.Name)
+			// skip default interface
+			if iface.Name == np.ifaceGw {
+				continue
+			}
+			// only interested in interfaces that match the regex
+			if np.regex != nil && !np.regex.MatchString(iface.Name) {
+				continue
+			}
+			// skip loopback interface
+			if iface.Flags&net.FlagLoopback == 1 {
+				continue
+			}
+			// publish this network interface
+			device := resourceapi.Device{
+				Name: np.driverName,
+				Basic: &resourceapi.BasicDevice{
+					Attributes: make(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute),
+					Capacity:   make(map[resourceapi.QualifiedName]resource.Quantity),
+				},
+			}
+			device.Basic.Attributes["name"] = resourceapi.DeviceAttribute{StringValue: &iface.Name}
+
+			link, err := netlink.LinkByName(iface.Name)
+			if err != nil {
+				klog.Warningf("Error getting link by name %v", err)
+				continue
+			}
+
+			switch link := link.(type) {
+			case *netlink.Veth:
+				// TODO improve this heuristic to detect veth associated to Pods
+				// link.PeerNamespace maybe
+				if link.PeerName == "eth0" {
+					continue
+				}
+			default:
+			}
+			// iface attributes
+			linkType := link.Type()
+			linkAttrs := link.Attrs()
+			// skip interfaces that are not up
+			if linkAttrs.OperState != netlink.OperUp {
+				continue
+			}
+
+			ethInfo, err := ethtoolDriverInfo(iface.Name)
+			if err != nil {
+				klog.Warningf("Error getting ethtool information by name %v", err)
+				continue
+			}
+
+			// TODO we can get more info from the kernel
+			// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-net
+			// Ref: https://github.com/canonical/lxd/blob/main/lxd/resources/network.go
+
+			device.Basic.Attributes["alias"] = resourceapi.DeviceAttribute{StringValue: &linkAttrs.Alias}
+			device.Basic.Attributes["type"] = resourceapi.DeviceAttribute{StringValue: &linkType}
+			// ethtool_drvinfo
+			driverName := string(bytes.TrimRight(ethInfo.Driver[:], "\x00"))
+			device.Basic.Attributes["driver"] = resourceapi.DeviceAttribute{StringValue: &driverName}
+			driverVersion := string(bytes.TrimRight(ethInfo.Version[:], "\x00"))
+			device.Basic.Attributes["version"] = resourceapi.DeviceAttribute{VersionValue: &driverVersion}
+			fwVersion := string(bytes.TrimRight(ethInfo.Fw_version[:], "\x00"))
+			device.Basic.Attributes["firmware"] = resourceapi.DeviceAttribute{VersionValue: &fwVersion}
+			busInfo := string(bytes.TrimRight(ethInfo.Bus_info[:], "\x00"))
+			device.Basic.Attributes["bus"] = resourceapi.DeviceAttribute{StringValue: &busInfo}
+			eromVersion := string(bytes.TrimRight(ethInfo.Erom_version[:], "\x00"))
+			device.Basic.Attributes["rom"] = resourceapi.DeviceAttribute{VersionValue: &eromVersion}
+			resources.Devices = append(resources.Devices, device)
+		}
+
+		klog.V(2).Infof("Found following network interfaces %v", resources.Devices)
+		if len(resources.Devices) > 0 {
+			np.draPlugin.PublishResources(ctx, resources)
+		}
+
+		select {
+		// trigger a reconcile
+		case <-nlChannel:
+			// poor man rate limited
+			time.Sleep(2 * time.Second)
+			// drain the channel
+			for len(nlChannel) > 0 {
+				<-nlChannel
+			}
+		case <-ticker.C:
+		}
+	}
 }
 
 func (np *NetworkPlugin) NodePrepareResources(ctx context.Context, request *drapb.NodePrepareResourcesRequest) (*drapb.NodePrepareResourcesResponse, error) {
