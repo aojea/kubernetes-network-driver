@@ -83,7 +83,7 @@ func Main() int {
 
 	driver, err := dra.Start(ctx, driverName, clientset, nodeName)
 	if err != nil {
-		klog.Info("driver failed to start: %v", err)
+		klog.Infof("driver failed to start: %v", err)
 		return 1
 	}
 	defer driver.Stop()
