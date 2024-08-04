@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	driverName = "networking.k8s.io/dra"
+	driverName = "netdriver"
 )
 
 var (

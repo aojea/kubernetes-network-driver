@@ -66,13 +66,19 @@ spec:
             add: ["NET_ADMIN"]
         volumeMounts:
         - name: device-plugin
-          mountPath: /var/lib/kubelet/device-plugins
+          mountPath: /var/lib/kubelet/plugins
+        - name: plugin-registry
+          mountPath: /var/lib/kubelet/plugins_registry
         - name: nri-plugin
           mountPath: /var/run/nri
       volumes:
       - name: device-plugin
         hostPath:
-          path: /var/lib/kubelet/device-plugins
+          path: /var/lib/kubelet/plugins
+          type: DirectoryOrCreate
+      - name: plugin-registry
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
           type: DirectoryOrCreate
       - name: nri-plugin
         hostPath:

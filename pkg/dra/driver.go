@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"regexp"
 	"slices"
 	"time"
@@ -45,6 +46,15 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 		nriPlugin:  &nri.Plugin{},
 	}
 
+	pluginRegistrationPath := "/var/lib/kubelet/plugins_registry/" + driverName + ".sock"
+	driverPluginPath := "/var/lib/kubelet/plugins/" + driverName
+	driverPluginSocketPath := driverPluginPath + "/plugin.sock"
+
+	err := os.MkdirAll(driverPluginPath, 0750)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create plugin path %s: %v", driverPluginPath, err)
+	}
+
 	ifaceGw, err := getDefaultGwIf()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get interface for the default route: %v", err)
@@ -63,23 +73,30 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 
 	plugin.nriPlugin.Stub = stub
 
-	err = plugin.nriPlugin.Stub.Run(ctx)
-	if err != nil {
-		klog.Infof("NRI plugin failed to start with error %v", err)
-		return nil, err
-	}
+	// cancel the plugin if the nri plugin fails for any reason
+	inCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		defer cancel()
+		err = plugin.nriPlugin.Stub.Run(inCtx)
+		if err != nil {
+			klog.Infof("NRI plugin failed with error %v", err)
+		}
+	}()
 
 	opts := []kubeletplugin.Option{
 		kubeletplugin.DriverName(driverName),
 		kubeletplugin.NodeName(nodeName),
 		kubeletplugin.KubeClient(kubeClient),
+		kubeletplugin.RegistrarSocketPath(pluginRegistrationPath),
+		kubeletplugin.PluginSocketPath(driverPluginSocketPath),
+		kubeletplugin.KubeletPluginSocketPath(driverPluginSocketPath),
 	}
-	d, err := kubeletplugin.Start(ctx, plugin, opts...)
+	d, err := kubeletplugin.Start(inCtx, plugin, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("start kubelet plugin: %w", err)
 	}
 	plugin.draPlugin = d
-	err = wait.PollUntilContextTimeout(ctx, 1*time.Second, 30*time.Second, true, func(context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(inCtx, 1*time.Second, 30*time.Second, true, func(context.Context) (bool, error) {
 		status := plugin.draPlugin.RegistrationStatus()
 		if status == nil {
 			return false, nil
@@ -90,7 +107,7 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 		return nil, err
 	}
 	// publish available resources
-	go plugin.PublishResources(ctx)
+	go plugin.PublishResources(inCtx)
 	return plugin, nil
 }
 
