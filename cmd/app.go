@@ -39,7 +39,9 @@ func Main() int {
 	klog.InitFlags(nil)
 	flag.Parse()
 
-	klog.Infof("flags: %v", flag.Args())
+	flag.VisitAll(func(f *flag.Flag) {
+		klog.Infof("FLAG: --%s=%q", f.Name, f.Value)
+	})
 
 	var config *rest.Config
 	var err error
@@ -87,6 +89,7 @@ func Main() int {
 		return 1
 	}
 	defer driver.Stop()
+	klog.Info("driver started")
 
 	select {
 	case <-signalCh:
