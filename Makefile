@@ -42,6 +42,6 @@ kind-cluster:
 
 kind-image: image
 	docker tag ${IMAGE} aojea/kube-network-driver:stable
-	kind load docker-image aojea/kube-network-driver:stable
+	kind load docker-image aojea/kube-network-driver:stable --name dra
 	kubectl delete -f install.yaml || true
 	kubectl apply -f install.yaml
