@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/Mellanox/rdmamap"
-	"github.com/aojea/kubernetes-network-driver/pkg/nri"
 	"github.com/vishvananda/netlink"
 
+	"github.com/containerd/nri/pkg/api"
 	"github.com/containerd/nri/pkg/stub"
 
 	resourceapi "k8s.io/api/resource/v1alpha3"
@@ -32,7 +32,7 @@ type NetworkPlugin struct {
 	driverName string
 	kubeClient kubernetes.Interface
 	draPlugin  kubeletplugin.DRAPlugin
-	nriPlugin  *nri.Plugin
+	nriPlugin  stub.Stub
 
 	ifaceGw string
 	regex   *regexp.Regexp
@@ -42,7 +42,6 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 	plugin := &NetworkPlugin{
 		driverName: driverName,
 		kubeClient: kubeClient,
-		nriPlugin:  &nri.Plugin{},
 	}
 
 	pluginRegistrationPath := "/var/lib/kubelet/plugins_registry/" + driverName + ".sock"
@@ -65,18 +64,18 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 		stub.WithPluginIdx("00"),
 	}
 
-	stub, err := stub.New(plugin.nriPlugin, nriOpts...)
+	stub, err := stub.New(plugin, nriOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create plugin stub: %v", err)
 	}
 
-	plugin.nriPlugin.Stub = stub
+	plugin.nriPlugin = stub
 
 	// cancel the plugin if the nri plugin fails for any reason
 	inCtx, cancel := context.WithCancel(ctx)
 	go func() {
 		defer cancel()
-		err = plugin.nriPlugin.Stub.Run(inCtx)
+		err = plugin.nriPlugin.Run(inCtx)
 		if err != nil {
 			klog.Infof("NRI plugin failed with error %v", err)
 		}
@@ -111,8 +110,49 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 }
 
 func (np *NetworkPlugin) Stop() {
-	np.nriPlugin.Stub.Stop()
+	np.nriPlugin.Stop()
 	np.draPlugin.Stop()
+}
+
+func (np *NetworkPlugin) RunPodSandbox(_ context.Context, pod *api.PodSandbox) error {
+	klog.V(2).Infof("RunPodSandbox pod %s/%s", pod.Namespace, pod.Name)
+
+	// get the pod network namespace
+	var ns string
+	for _, namespace := range pod.Linux.GetNamespaces() {
+		if namespace.Type == "network" {
+			ns = namespace.Path
+			break
+		}
+	}
+	// TODO check host network namespace
+	if ns == "" {
+		return nil
+	}
+
+	// attach the network devices to the pod namespace
+
+	return nil
+}
+
+func (np *NetworkPlugin) StopPodSandbox(ctx context.Context, pod *api.PodSandbox) error {
+	klog.V(2).Infof("StopPodSandbox pod %s/%s", pod.Namespace, pod.Name)
+	// get the pod network namespace
+	var ns string
+	for _, namespace := range pod.Linux.GetNamespaces() {
+		if namespace.Type == "network" {
+			ns = namespace.Path
+			break
+		}
+	}
+	// TODO check host network namespace
+	if ns == "" {
+		return nil
+	}
+
+	// release the network devices from the pod namespace
+
+	return nil
 }
 
 func (np *NetworkPlugin) PublishResources(ctx context.Context) {
