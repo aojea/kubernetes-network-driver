@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/vishvananda/netlink"
@@ -14,8 +15,8 @@ import (
 
 const (
 	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-net
-	sysfsnet = "/sys/class/net/"
-	sysfspci = "/sys/devices/"
+	sysfsnet     = "/sys/class/net/"
+	sysfsdevices = "/sys/devices/"
 )
 
 func getDefaultGwIf() (string, error) {
@@ -64,14 +65,8 @@ func ethtoolDriverInfo(name string) (*unix.EthtoolDrvinfo, error) {
 	return unix.IoctlGetEthtoolDrvinfo(fd, name)
 }
 
-// https://docs.kernel.org/PCI/sysfs-pci.html
-// https://unix.stackexchange.com/questions/607818/identify-pci-device-providing-network-interface
-func getPCIAddress(name string) string {
-	return ""
-}
-
 func sriovTotalVFs(name string) int {
-	totalVfsPath := sysfsnet + name + "/device/sriov_totalvfs"
+	totalVfsPath := filepath.Join(sysfsnet, name, "/device/sriov_totalvfs")
 	totalBytes, err := os.ReadFile(totalVfsPath)
 	if err != nil {
 		klog.V(4).Infof("error trying to get total VFs for device %s: %v", name, err)
@@ -87,7 +82,7 @@ func sriovTotalVFs(name string) int {
 }
 
 func sriovNumVFs(name string) int {
-	numVfsPath := sysfsnet + name + "/device/sriov_numvfs"
+	numVfsPath := filepath.Join(sysfsnet, name, "/device/sriov_numvfs")
 	numBytes, err := os.ReadFile(numVfsPath)
 	if err != nil {
 		klog.V(4).Infof("error trying to get number of VFs for device %s: %v", name, err)

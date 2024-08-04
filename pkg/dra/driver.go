@@ -177,6 +177,9 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-net
 			// Ref: https://github.com/canonical/lxd/blob/main/lxd/resources/network.go
 
+			// sriov device plugin has a more detailed and better discovery
+			// https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin/blob/ed1c14dd4c313c7dd9fe4730a60358fbeffbfdd4/cmd/sriovdp/manager.go#L243
+
 			device.Basic.Attributes["alias"] = resourceapi.DeviceAttribute{StringValue: &linkAttrs.Alias}
 			device.Basic.Attributes["type"] = resourceapi.DeviceAttribute{StringValue: &linkType}
 			// ethtool_drvinfo
