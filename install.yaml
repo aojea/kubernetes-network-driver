@@ -51,7 +51,7 @@ spec:
       containers:
       - name: network-driver
         args:
-        - --="4"
+        - --v="4"
         image: aojea/kube-network-driver:stable
         resources:
           requests:
