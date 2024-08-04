@@ -1,7 +1,6 @@
 package dra
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -150,7 +149,7 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 				continue
 			}
 			// skip loopback interface
-			if iface.Flags&net.FlagLoopback == 1 {
+			if iface.Flags&net.FlagLoopback == net.FlagLoopback {
 				continue
 			}
 			// publish this network interface
@@ -182,14 +181,6 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			linkType := link.Type()
 			linkAttrs := link.Attrs()
 
-			// Thid does not work on some virtualized interfaces
-			// https://portal.nutanix.com/page/documents/kbs/details?targetId=kA07V000000LXRnSAO
-			ethInfo, err := ethtoolDriverInfo(iface.Name)
-			if err != nil {
-				klog.Warningf("Error getting ethtool information by name %v", err)
-				continue
-			}
-
 			// TODO we can get more info from the kernel
 			// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-net
 			// Ref: https://github.com/canonical/lxd/blob/main/lxd/resources/network.go
@@ -199,18 +190,7 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 
 			device.Basic.Attributes["alias"] = resourceapi.DeviceAttribute{StringValue: &linkAttrs.Alias}
 			device.Basic.Attributes["type"] = resourceapi.DeviceAttribute{StringValue: &linkType}
-			// ethtool_drvinfo
-			driverName := string(bytes.TrimRight(ethInfo.Driver[:], "\x00"))
-			device.Basic.Attributes["driver"] = resourceapi.DeviceAttribute{StringValue: &driverName}
-			driverVersion := string(bytes.TrimRight(ethInfo.Version[:], "\x00"))
-			device.Basic.Attributes["version"] = resourceapi.DeviceAttribute{VersionValue: &driverVersion}
-			fwVersion := string(bytes.TrimRight(ethInfo.Fw_version[:], "\x00"))
-			device.Basic.Attributes["firmware"] = resourceapi.DeviceAttribute{VersionValue: &fwVersion}
-			// pci address
-			busInfo := string(bytes.TrimRight(ethInfo.Bus_info[:], "\x00"))
-			device.Basic.Attributes["bus-info"] = resourceapi.DeviceAttribute{StringValue: &busInfo}
-			eromVersion := string(bytes.TrimRight(ethInfo.Erom_version[:], "\x00"))
-			device.Basic.Attributes["rom"] = resourceapi.DeviceAttribute{VersionValue: &eromVersion}
+
 			isRDMA := rdmamap.IsRDmaDeviceForNetdevice(iface.Name)
 			device.Basic.Attributes["rdma"] = resourceapi.DeviceAttribute{BoolValue: &isRDMA}
 			// from https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin/blob/ed1c14dd4c313c7dd9fe4730a60358fbeffbfdd4/pkg/netdevice/netDeviceProvider.go#L99
