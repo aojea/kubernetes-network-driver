@@ -6,11 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 
-	"github.com/aojea/kubernetes-network-driver/pkg/hostdevice"
-	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
@@ -72,7 +69,7 @@ func sriovTotalVFs(name string) int {
 	totalVfsPath := filepath.Join(sysfsnet, name, "/device/sriov_totalvfs")
 	totalBytes, err := os.ReadFile(totalVfsPath)
 	if err != nil {
-		klog.V(4).Infof("error trying to get total VFs for device %s: %v", name, err)
+		klog.V(7).Infof("error trying to get total VFs for device %s: %v", name, err)
 		return 0
 	}
 	total := bytes.TrimSpace(totalBytes)
@@ -88,7 +85,7 @@ func sriovNumVFs(name string) int {
 	numVfsPath := filepath.Join(sysfsnet, name, "/device/sriov_numvfs")
 	numBytes, err := os.ReadFile(numVfsPath)
 	if err != nil {
-		klog.V(4).Infof("error trying to get number of VFs for device %s: %v", name, err)
+		klog.V(7).Infof("error trying to get number of VFs for device %s: %v", name, err)
 		return 0
 	}
 	num := bytes.TrimSpace(numBytes)
@@ -98,53 +95,4 @@ func sriovNumVFs(name string) int {
 		return 0
 	}
 	return t
-}
-
-// an annotated netdevice
-// https://man7.org/linux/man-pages/man7/netdevice.7.html
-type netdevice struct {
-	Name    string `json:"name"`     // name in the runtime namespace
-	NewName string `json:"new_name"` // name inside the pod namespace
-	Address string `json:"address"`
-	Prefix  int    `json:"prefix"`
-	MTU     int    `json:"mtu"`
-}
-
-func (n *netdevice) inject(nsPath string) error {
-	// Lock the OS Thread so we don't accidentally switch namespaces
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	containerNs, err := ns.GetNS(nsPath)
-	if err != nil {
-		return err
-	}
-	defer containerNs.Close()
-
-	_, err = hostdevice.MoveLinkIn(n.Name, containerNs, n.NewName)
-	if err != nil {
-		return fmt.Errorf("failed to move link %v", err)
-	}
-	return nil
-}
-
-// remove the network device from the Pod namespace and recover its name
-// Leaves the interface in down state to avoid issues with the root network.
-func (n *netdevice) release(nsPath string) error {
-	// Lock the OS Thread so we don't accidentally switch namespaces
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	containerNs, err := ns.GetNS(nsPath)
-	if err != nil {
-		return err
-	}
-	defer containerNs.Close()
-
-	err = hostdevice.MoveLinkOut(containerNs, n.NewName)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

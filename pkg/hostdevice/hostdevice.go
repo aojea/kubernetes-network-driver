@@ -29,21 +29,25 @@ func setTempName(dev netlink.Link) (netlink.Link, error) {
 	return tempDev, nil
 }
 
-func MoveLinkIn(hostIfName string, containerNs ns.NetNS, ifName string) (netlink.Link, error) {
+func MoveLinkIn(hostIfName string, containerNsPAth string, ifName string) error {
+	containerNs, err := ns.GetNS(containerNsPAth)
+	if err != nil {
+		return err
+	}
 	hostDev, err := netlink.LinkByName(hostIfName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	origLinkFlags := hostDev.Attrs().Flags
 	hostDevName := hostDev.Attrs().Name
 	defaultNs, err := ns.GetCurrentNS()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get host namespace: %v", err)
+		return fmt.Errorf("failed to get host namespace: %v", err)
 	}
 
 	// Devices can be renamed only when down
 	if err = netlink.LinkSetDown(hostDev); err != nil {
-		return nil, fmt.Errorf("failed to set %q down: %v", hostDev.Attrs().Name, err)
+		return fmt.Errorf("failed to set %q down: %v", hostDev.Attrs().Name, err)
 	}
 
 	// restore original link state in case of error
@@ -57,7 +61,7 @@ func MoveLinkIn(hostIfName string, containerNs ns.NetNS, ifName string) (netlink
 
 	hostDev, err = setTempName(hostDev)
 	if err != nil {
-		return nil, fmt.Errorf("failed to rename device %q to temporary name: %v", hostDevName, err)
+		return fmt.Errorf("failed to rename device %q to temporary name: %v", hostDevName, err)
 	}
 
 	// restore original netdev name in case of error
@@ -68,7 +72,7 @@ func MoveLinkIn(hostIfName string, containerNs ns.NetNS, ifName string) (netlink
 	}()
 
 	if err = netlink.LinkSetNsFd(hostDev, int(containerNs.Fd())); err != nil {
-		return nil, fmt.Errorf("failed to move %q to container ns: %v", hostDev.Attrs().Name, err)
+		return fmt.Errorf("failed to move %q to container ns: %v", hostDev.Attrs().Name, err)
 	}
 
 	var contDev netlink.Link
@@ -127,13 +131,17 @@ func MoveLinkIn(hostIfName string, containerNs ns.NetNS, ifName string) (netlink
 		}
 		return nil
 	}); err != nil {
-		return nil, err
+		return err
 	}
 
-	return contDev, nil
+	return nil
 }
 
-func MoveLinkOut(containerNs ns.NetNS, ifName string) error {
+func MoveLinkOut(containerNsPAth string, ifName string) error {
+	containerNs, err := ns.GetNS(containerNsPAth)
+	if err != nil {
+		return err
+	}
 	defaultNs, err := ns.GetCurrentNS()
 	if err != nil {
 		return err

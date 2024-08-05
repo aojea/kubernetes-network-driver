@@ -1,0 +1,18 @@
+apiVersion: resource.k8s.io/v1alpha3
+kind: DeviceClass
+metadata:
+  name: dummy-interfaces
+
+spec:
+  selectors:
+    - cel:
+        expression: device.driver == "netdriver"
+    - cel:
+        expression: device.attributes["netdriver"].type == "dummy"
+  config:
+  - opaque:
+      driver: netdriver
+      parameters:
+        initCommand:
+          - echo "hola"
+

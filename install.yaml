@@ -82,6 +82,8 @@ spec:
           mountPath: /var/lib/kubelet/plugins_registry
         - name: nri-plugin
           mountPath: /var/run/nri
+        - name: netns
+          mountPath: /var/run/netns
       volumes:
       - name: device-plugin
         hostPath:
@@ -94,5 +96,9 @@ spec:
       - name: nri-plugin
         hostPath:
           path: /var/run/nri
+          type: DirectoryOrCreate
+      - name: netns
+        hostPath:
+          path: /var/run/netns
           type: DirectoryOrCreate
 ---

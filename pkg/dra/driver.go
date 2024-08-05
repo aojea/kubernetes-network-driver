@@ -7,9 +7,11 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/Mellanox/rdmamap"
+	"github.com/aojea/kubernetes-network-driver/pkg/hostdevice"
 	"github.com/vishvananda/netlink"
 
 	"github.com/containerd/nri/pkg/api"
@@ -26,6 +28,30 @@ import (
 	drapb "k8s.io/kubelet/pkg/apis/dra/v1alpha4"
 )
 
+type storage struct {
+	mu    sync.RWMutex
+	cache map[types.UID]resourceapi.AllocationResult
+}
+
+func (s *storage) Add(uid types.UID, allocation resourceapi.AllocationResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cache[uid] = allocation
+}
+
+func (s *storage) Get(uid types.UID) (resourceapi.AllocationResult, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	allocation, ok := s.cache[uid]
+	return allocation, ok
+}
+
+func (s *storage) Remove(uid types.UID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.cache, uid)
+}
+
 var _ drapb.NodeServer = &NetworkPlugin{}
 
 type NetworkPlugin struct {
@@ -34,14 +60,19 @@ type NetworkPlugin struct {
 	draPlugin  kubeletplugin.DRAPlugin
 	nriPlugin  stub.Stub
 
+	podAllocations   storage
+	claimAllocations storage
+
 	ifaceGw string
 	regex   *regexp.Regexp
 }
 
 func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interface, nodeName string) (*NetworkPlugin, error) {
 	plugin := &NetworkPlugin{
-		driverName: driverName,
-		kubeClient: kubeClient,
+		driverName:       driverName,
+		kubeClient:       kubeClient,
+		podAllocations:   storage{cache: make(map[types.UID]resourceapi.AllocationResult)},
+		claimAllocations: storage{cache: make(map[types.UID]resourceapi.AllocationResult)},
 	}
 
 	pluginRegistrationPath := "/var/lib/kubelet/plugins_registry/" + driverName + ".sock"
@@ -117,6 +148,12 @@ func (np *NetworkPlugin) Stop() {
 func (np *NetworkPlugin) RunPodSandbox(_ context.Context, pod *api.PodSandbox) error {
 	klog.V(2).Infof("RunPodSandbox pod %s/%s", pod.Namespace, pod.Name)
 
+	allocation, ok := np.podAllocations.Get(types.UID(pod.Uid))
+	if !ok {
+		klog.V(2).Infof("RunPodSandbox pod %s/%s does not have allocations", pod.Namespace, pod.Name)
+		return nil
+	}
+
 	// get the pod network namespace
 	var ns string
 	for _, namespace := range pod.Linux.GetNamespaces() {
@@ -127,16 +164,42 @@ func (np *NetworkPlugin) RunPodSandbox(_ context.Context, pod *api.PodSandbox) e
 	}
 	// TODO check host network namespace
 	if ns == "" {
+		klog.V(2).Infof("RunPodSandbox pod %s/%s using host network, skipping", pod.Namespace, pod.Name)
 		return nil
 	}
 
-	// attach the network devices to the pod namespace
+	for _, config := range allocation.Devices.Config {
+		if config.Opaque == nil {
+			continue
+		}
+		// TODO config.Request seems to be a sort of filter
+		klog.Infof("debug config.Opaque.Parameters: %s", config.Opaque.Parameters.String())
+		// TODO get config options here, it can add ips or commands
+		// to add routes, run dhcp, rename the interface ... whatever
 
+	}
+
+	// attach the network devices to the pod namespace
+	for _, result := range allocation.Devices.Results {
+		klog.Infof("debug allocation.Devices.Result: %#v", result)
+		err := hostdevice.MoveLinkIn(result.Device, ns, result.Device)
+		if err != nil {
+			klog.Infof("error moving device %s to namespace %s: %v", result.Device, ns, err)
+			return err
+		}
+	}
 	return nil
 }
 
 func (np *NetworkPlugin) StopPodSandbox(ctx context.Context, pod *api.PodSandbox) error {
 	klog.V(2).Infof("StopPodSandbox pod %s/%s", pod.Namespace, pod.Name)
+	allocation, ok := np.podAllocations.Get(types.UID(pod.Uid))
+	if !ok {
+		klog.V(2).Infof("StopPodSandbox pod %s/%s does not have allocations", pod.Namespace, pod.Name)
+		return nil
+	}
+	defer np.podAllocations.Remove(types.UID(pod.Uid))
+
 	// get the pod network namespace
 	var ns string
 	for _, namespace := range pod.Linux.GetNamespaces() {
@@ -151,7 +214,26 @@ func (np *NetworkPlugin) StopPodSandbox(ctx context.Context, pod *api.PodSandbox
 	}
 
 	// release the network devices from the pod namespace
+	for _, config := range allocation.Devices.Config {
+		if config.Opaque == nil {
+			continue
+		}
+		// TODO config.Request seems to be a sort of filter
+		klog.Infof("debug config.Opaque.Parameters: %s", config.Opaque.Parameters.String())
+		// TODO get config options here, it can add ips or commands
+		// to add routes, run dhcp, rename the interface ... whatever
 
+	}
+
+	// attach the network devices to the pod namespace
+	for _, result := range allocation.Devices.Results {
+		klog.Infof("debug allocation.Devices.Result: %#v", result)
+		err := hostdevice.MoveLinkOut(result.Device, ns)
+		if err != nil {
+			klog.V(2).Infof("StopPodSandbox pod %s/%s does not have allocations", pod.Namespace, pod.Name)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -175,7 +257,7 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 		}
 		resources := kubeletplugin.Resources{}
 		for _, iface := range ifaces {
-			klog.V(2).Infof("Checking iface %s", iface.Name)
+			klog.V(7).Infof("Checking iface %s", iface.Name)
 			// skip default interface
 			if iface.Name == np.ifaceGw {
 				continue
@@ -184,17 +266,13 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			if np.regex != nil && !np.regex.MatchString(iface.Name) {
 				continue
 			}
-			// TODO skip interfaces that are down ???
-			if iface.Flags&net.FlagUp == 0 {
-				continue
-			}
 			// skip loopback interface
 			if iface.Flags&net.FlagLoopback == net.FlagLoopback {
 				continue
 			}
 			// publish this network interface
 			device := resourceapi.Device{
-				Name: np.driverName,
+				Name: iface.Name,
 				Basic: &resourceapi.BasicDevice{
 					Attributes: make(map[resourceapi.QualifiedName]resourceapi.DeviceAttribute),
 					Capacity:   make(map[resourceapi.QualifiedName]resource.Quantity),
@@ -204,7 +282,7 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 
 			link, err := netlink.LinkByName(iface.Name)
 			if err != nil {
-				klog.Warningf("Error getting link by name %v", err)
+				klog.Infof("Error getting link by name %v", err)
 				continue
 			}
 
@@ -228,6 +306,19 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			// sriov device plugin has a more detailed and better discovery
 			// https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin/blob/ed1c14dd4c313c7dd9fe4730a60358fbeffbfdd4/cmd/sriovdp/manager.go#L243
 
+			if ips, err := iface.Addrs(); err == nil && len(ips) > 0 {
+				// TODO assume only one addres by now
+				ip := ips[0].String()
+				device.Basic.Attributes["ip"] = resourceapi.DeviceAttribute{StringValue: &ip}
+				mac := iface.HardwareAddr.String()
+				device.Basic.Attributes["mac"] = resourceapi.DeviceAttribute{StringValue: &mac}
+				mtu := int64(iface.MTU)
+				device.Basic.Attributes["mtu"] = resourceapi.DeviceAttribute{IntValue: &mtu}
+			}
+
+			device.Basic.Attributes["encapsulation"] = resourceapi.DeviceAttribute{StringValue: &linkAttrs.EncapType}
+			operState := linkAttrs.OperState.String()
+			device.Basic.Attributes["state"] = resourceapi.DeviceAttribute{StringValue: &operState}
 			device.Basic.Attributes["alias"] = resourceapi.DeviceAttribute{StringValue: &linkAttrs.Alias}
 			device.Basic.Attributes["type"] = resourceapi.DeviceAttribute{StringValue: &linkType}
 
@@ -240,7 +331,7 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			resources.Devices = append(resources.Devices, device)
 		}
 
-		klog.V(2).Infof("Found following network interfaces %v", resources.Devices)
+		klog.V(4).Infof("Found following network interfaces %#v", resources.Devices)
 		if len(resources.Devices) > 0 {
 			np.draPlugin.PublishResources(ctx, resources)
 		}
@@ -268,6 +359,7 @@ func (np *NetworkPlugin) NodePrepareResources(ctx context.Context, request *drap
 	}
 
 	for _, claimReq := range request.GetClaims() {
+		klog.Infof("NodePrepareResources: Claim Request %#v", claimReq)
 		devices, err := np.nodePrepareResource(ctx, claimReq)
 		if err != nil {
 			resp.Claims[claimReq.UID] = &drapb.NodePrepareResourceResponse{
@@ -301,6 +393,15 @@ func (np *NetworkPlugin) nodePrepareResource(ctx context.Context, claimReq *drap
 	if claim.UID != types.UID(claim.UID) {
 		return nil, fmt.Errorf("claim %s/%s got replaced", claimReq.Namespace, claimReq.Name)
 	}
+	np.claimAllocations.Add(claim.UID, *claim.Status.Allocation)
+
+	for _, reserved := range claim.Status.ReservedFor {
+		if reserved.Resource != "pods" || reserved.APIGroup != "" {
+			klog.Infof("claim reference unsupported for %#v", reserved)
+			continue
+		}
+		np.podAllocations.Add(reserved.UID, *claim.Status.Allocation)
+	}
 	var devices []drapb.Device
 	for _, result := range claim.Status.Allocation.Devices.Results {
 		requestName := result.Request
@@ -311,7 +412,6 @@ func (np *NetworkPlugin) nodePrepareResource(ctx context.Context, claimReq *drap
 				continue
 			}
 		}
-
 		device := drapb.Device{
 			PoolName:   result.Pool,
 			DeviceName: result.Device,
@@ -344,5 +444,13 @@ func (np *NetworkPlugin) NodeUnprepareResources(ctx context.Context, request *dr
 }
 
 func (np *NetworkPlugin) nodeUnprepareResource(ctx context.Context, claimReq *drapb.Claim) error {
+	allocation, ok := np.claimAllocations.Get(types.UID(claimReq.UID))
+	if !ok {
+		klog.Infof("claim request does not exist %s/%s %s", claimReq.Namespace, claimReq.Name, claimReq.UID)
+		return nil
+	}
+	defer np.claimAllocations.Remove(types.UID(claimReq.UID))
+	klog.Infof("claim %s/%s with allocation %#v", claimReq.Namespace, claimReq.Name, allocation)
+	// TODO do unpreparing things
 	return nil
 }
