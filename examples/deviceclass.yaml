@@ -11,7 +11,7 @@ spec:
         expression: device.attributes["networking.k8s.io"].type == "dummy"
   config:
   - opaque:
-      driver: netdriver
+      driver: networking.k8s.io
       parameters:
         initCommand:
           - echo "hola"

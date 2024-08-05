@@ -73,8 +73,9 @@ spec:
             cpu: "100m"
             memory: "50Mi"
         securityContext:
+          privileged: true
           capabilities:
-            add: ["NET_ADMIN"]
+            add: ["NET_ADMIN", "CAP_SYS_ADMIN"]
         volumeMounts:
         - name: device-plugin
           mountPath: /var/lib/kubelet/plugins
@@ -84,21 +85,18 @@ spec:
           mountPath: /var/run/nri
         - name: netns
           mountPath: /var/run/netns
+          mountPropagation: HostToContainer
       volumes:
       - name: device-plugin
         hostPath:
           path: /var/lib/kubelet/plugins
-          type: DirectoryOrCreate
       - name: plugin-registry
         hostPath:
           path: /var/lib/kubelet/plugins_registry
-          type: DirectoryOrCreate
       - name: nri-plugin
         hostPath:
           path: /var/run/nri
-          type: DirectoryOrCreate
       - name: netns
         hostPath:
           path: /var/run/netns
-          type: DirectoryOrCreate
 ---

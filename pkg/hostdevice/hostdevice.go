@@ -131,7 +131,7 @@ func MoveLinkIn(hostIfName string, containerNsPAth string, ifName string) error 
 		}
 		return nil
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to exec to container ns: %v", err)
 	}
 
 	return nil

@@ -221,7 +221,6 @@ func (np *NetworkPlugin) StopPodSandbox(ctx context.Context, pod *api.PodSandbox
 		klog.Infof("StopPodSandbox config.Opaque.Parameters: %s", config.Opaque.Parameters.String())
 		// TODO get config options here, it can add ips or commands
 		// to add routes, run dhcp, rename the interface ... whatever
-
 	}
 
 	// attach the network devices to the pod namespace
@@ -433,6 +432,7 @@ func (np *NetworkPlugin) NodeUnprepareResources(ctx context.Context, request *dr
 	for _, claimReq := range request.Claims {
 		err := np.nodeUnprepareResource(ctx, claimReq)
 		if err != nil {
+			klog.Infof("error unpreparing ressources for claim %s/%s : %v", claimReq.Namespace, claimReq.Name, err)
 			resp.Claims[claimReq.UID] = &drapb.NodeUnprepareResourceResponse{
 				Error: err.Error(),
 			}
