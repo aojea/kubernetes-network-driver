@@ -6,9 +6,9 @@ metadata:
 spec:
   selectors:
     - cel:
-        expression: device.driver == "netdriver"
+        expression: device.driver == "networking.k8s.io"
     - cel:
-        expression: device.attributes["netdriver"].type == "dummy"
+        expression: device.attributes["networking.k8s.io"].type == "dummy"
   config:
   - opaque:
       driver: netdriver

@@ -77,12 +77,11 @@ func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interfa
 
 	pluginRegistrationPath := "/var/lib/kubelet/plugins_registry/" + driverName + ".sock"
 	driverPluginPath := "/var/lib/kubelet/plugins/" + driverName
-	driverPluginSocketPath := driverPluginPath + "/plugin.sock"
-
 	err := os.MkdirAll(driverPluginPath, 0750)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create plugin path %s: %v", driverPluginPath, err)
 	}
+	driverPluginSocketPath := driverPluginPath + "/plugin.sock"
 
 	ifaceGw, err := getDefaultGwIf()
 	if err != nil {
@@ -173,7 +172,7 @@ func (np *NetworkPlugin) RunPodSandbox(_ context.Context, pod *api.PodSandbox) e
 			continue
 		}
 		// TODO config.Request seems to be a sort of filter
-		klog.Infof("debug config.Opaque.Parameters: %s", config.Opaque.Parameters.String())
+		klog.Infof("RunPodSandbox config.Opaque.Parameters: %s", config.Opaque.Parameters.String())
 		// TODO get config options here, it can add ips or commands
 		// to add routes, run dhcp, rename the interface ... whatever
 
@@ -181,10 +180,10 @@ func (np *NetworkPlugin) RunPodSandbox(_ context.Context, pod *api.PodSandbox) e
 
 	// attach the network devices to the pod namespace
 	for _, result := range allocation.Devices.Results {
-		klog.Infof("debug allocation.Devices.Result: %#v", result)
+		klog.Infof("RunPodSandbox allocation.Devices.Result: %#v", result)
 		err := hostdevice.MoveLinkIn(result.Device, ns, result.Device)
 		if err != nil {
-			klog.Infof("error moving device %s to namespace %s: %v", result.Device, ns, err)
+			klog.Infof("RunPodSandbox error moving device %s to namespace %s: %v", result.Device, ns, err)
 			return err
 		}
 	}
@@ -219,7 +218,7 @@ func (np *NetworkPlugin) StopPodSandbox(ctx context.Context, pod *api.PodSandbox
 			continue
 		}
 		// TODO config.Request seems to be a sort of filter
-		klog.Infof("debug config.Opaque.Parameters: %s", config.Opaque.Parameters.String())
+		klog.Infof("StopPodSandbox config.Opaque.Parameters: %s", config.Opaque.Parameters.String())
 		// TODO get config options here, it can add ips or commands
 		// to add routes, run dhcp, rename the interface ... whatever
 
@@ -227,11 +226,12 @@ func (np *NetworkPlugin) StopPodSandbox(ctx context.Context, pod *api.PodSandbox
 
 	// attach the network devices to the pod namespace
 	for _, result := range allocation.Devices.Results {
-		klog.Infof("debug allocation.Devices.Result: %#v", result)
+		klog.Infof("StopPodSandbox allocation.Devices.Result: %#v", result)
 		err := hostdevice.MoveLinkOut(result.Device, ns)
 		if err != nil {
-			klog.V(2).Infof("StopPodSandbox pod %s/%s does not have allocations", pod.Namespace, pod.Name)
-			return err
+			// Swallow error as deleting the namespace will return the interface to the root namespace anyway
+			klog.V(2).Infof("StopPodSandbox pod %s/%s failed to deallocate interface", pod.Namespace, pod.Name)
+			return nil
 		}
 	}
 	return nil
