@@ -31,9 +31,7 @@ spec:
   containers:
   - name: ctr1
     image: registry.k8s.io/e2e-test-images/agnhost:2.39
-    resources:
-      claims:
-      - name: dummy1
   resourceClaims:
   - name: dummy1
     resourceClaimName: dummy-interface-static-ip
+
