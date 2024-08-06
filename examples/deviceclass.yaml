@@ -13,6 +13,4 @@ spec:
   - opaque:
       driver: networking.k8s.io
       parameters:
-        initCommand:
-          - echo "hola"
-
+        ipam: "dhcp"

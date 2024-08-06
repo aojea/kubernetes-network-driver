@@ -1,0 +1,39 @@
+apiVersion: resource.k8s.io/v1alpha3
+kind:  ResourceClaim
+metadata:
+  name: dummy-interface-static-ip
+spec:
+  devices:
+    requests:
+    - name: dummy
+      deviceClassName: dummy-interfaces
+      selectors:
+        - cel:
+            expression: device.driver == "networking.k8s.io"
+        - cel:
+            expression: device.attributes["networking.k8s.io"].type == "dummy"
+    config:
+    - opaque:
+        driver: networking.k8s.io
+        parameters:
+          newName: "eth99"
+          address: "192.168.2.2"
+          mask: "255.255.255.0"
+          mtu: "1500"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod1
+  labels:
+    app: pod
+spec:
+  containers:
+  - name: ctr1
+    image: registry.k8s.io/e2e-test-images/agnhost:2.39
+    resources:
+      claims:
+      - name: dummy1
+  resourceClaims:
+  - name: dummy1
+    resourceClaimName: dummy-interface-static-ip
