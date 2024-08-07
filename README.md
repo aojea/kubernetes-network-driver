@@ -30,11 +30,22 @@ DRA Dynamic Resource Allocation, is a new framework in Kubernetes built to
 improve Kubernetes relation with the hardware, that can be used to solve the
 problem of advanced network configurations.
 
+## Anatomy of a Networking DRA Driver
+
+The networking DRA drivers uses GRPC to communicate with the Kubelet via the [DRA API](https://github.com/kubernetes/kubernetes/tree/master/staging/src/k8s.io/kubelet/pkg/apis/dra/v1alpha4) and the Container Runtime via [NRI](https://github.com/containerd/nri). This architecture facilitates the supportability and reduces the complexity of the solution, it also makes it fully compatible and agnostic of the existing CNI plugins in the cluster.
+
+Networking DRA drivers authors need to define two business logic:
+- publishing node resources: discovery the local resources on the node that the driver should announce, and its attributes and capabilities.
+- executing on the ResourceClaim: the Network Driver, before the Pod start to be created, will receive a GRPC call from the Kubelet using the DRA API with the details of the request associated to a Pod. Once the Pod network namespaces has been created, the driver will receive a GRPC call from the Container Runtime via NRI to execute the corresponding configuration. A more detailed diagram can be found in:
+
+[![](https://mermaid.ink/img/pako:eNp9UstuwyAQ_JUVp1ZNfoBDpMi-WFXdyLn6gs0mQTXgLtCHovx714nTWoobDgiW2dlhNEfReo1CioDvCV2LuVF7UrZ2wEul6F2yDdLl_pwa7DAul6vVU4nx09Mb5NUacjIfSBJK5toQ9oqwwuATtRgeHi-9pY8InmEw1_naRGUcxAPCtTPrlLF8Y10hgnIaMu92Zj_S3ZAMqpajwvtSrt_gXzDlMBhJS6iS23i95UmN_7pi_wADf1YWEniDdZ6P72VxfpjwMEmxCXPts55VBRy8f5sff981xoMb605ZDL1qGd4jqWi8C_esmiqGG7FTK2eF_eNhRqgi_lbCjI1T6lu4WAiLZJXRHMrj0FwLToXFWkg-atyp1MVa1O7E0CGg22_XChkp4UKkXjPfmGEhd6oLXEVtoqeXS9DPeT_9ABUC_8M?type=png)](https://mermaid.live/edit#pako:eNp9UstuwyAQ_JUVp1ZNfoBDpMi-WFXdyLn6gs0mQTXgLtCHovx714nTWoobDgiW2dlhNEfReo1CioDvCV2LuVF7UrZ2wEul6F2yDdLl_pwa7DAul6vVU4nx09Mb5NUacjIfSBJK5toQ9oqwwuATtRgeHi-9pY8InmEw1_naRGUcxAPCtTPrlLF8Y10hgnIaMu92Zj_S3ZAMqpajwvtSrt_gXzDlMBhJS6iS23i95UmN_7pi_wADf1YWEniDdZ6P72VxfpjwMEmxCXPts55VBRy8f5sff981xoMb605ZDL1qGd4jqWi8C_esmiqGG7FTK2eF_eNhRqgi_lbCjI1T6lu4WAiLZJXRHMrj0FwLToXFWkg-atyp1MVa1O7E0CGg22_XChkp4UKkXjPfmGEhd6oLXEVtoqeXS9DPeT_9ABUC_8M)
+
 ## References
 
-[Dynamic Resource Allocation #306](https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/3063-dynamic-resource-allocation/README.md)
-[Add CDI devices to device plugin API #40](https://github.com/kubernetes/enhancements/issues/409()
-[DRA: structured parameters #438](https://github.com/kubernetes/enhancements/issues/4381)
-[NVIDIA GPU Use-Cases for Dynamic Resource Allocation (DRA)](https://docs.google.com/document/d/1bDO11rEq_Yhpgpk5RN0VwnMLV1_2wNWvtOyM_QoIV_Y/edit?disco=AAABHIxz8AU)
-[Extend PodResources to include resources from Dynamic Resource Allocation (DRA) #3695](https://github.com/kubernetes/enhancements/issues/3695)
-[WG Device Management](https://github.com/kubernetes-sigs/wg-device-management)
+- [Dynamic Resource Allocation #306](https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/3063-dynamic-resource-allocation/README.md)
+- [Add CDI devices to device plugin API #40](https://github.com/kubernetes/enhancements/issues/409()
+- [DRA: structured parameters #438](https://github.com/kubernetes/enhancements/issues/4381)
+- [NVIDIA GPU Use-Cases for Dynamic Resource Allocation (DRA)](https://docs.google.com/document/d/1bDO11rEq_Yhpgpk5RN0VwnMLV1_2wNWvtOyM_QoIV_Y/edit?disco=AAABHIxz8AU)
+- [Extend PodResources to include resources from Dynamic Resource Allocation (DRA) #3695](https://github.com/kubernetes/enhancements/issues/3695)
+- [WG Device Management](https://github.com/kubernetes-sigs/wg-device-management)
+- [Kubernetes Network Drivers](https://docs.google.com/presentation/d/1Vdr7BhbYXeWjwmLjGmqnUkvJr_eOUdU0x-JxfXWxUT8/edit?usp=sharing)
