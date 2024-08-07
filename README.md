@@ -43,7 +43,7 @@ Networking DRA drivers authors need to define two business logic:
 ## References
 
 - [Dynamic Resource Allocation #306](https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/3063-dynamic-resource-allocation/README.md)
-- [Add CDI devices to device plugin API #40](https://github.com/kubernetes/enhancements/issues/409()
+- [Add CDI devices to device plugin API #40](https://github.com/kubernetes/enhancements/issues/409)
 - [DRA: structured parameters #438](https://github.com/kubernetes/enhancements/issues/4381)
 - [NVIDIA GPU Use-Cases for Dynamic Resource Allocation (DRA)](https://docs.google.com/document/d/1bDO11rEq_Yhpgpk5RN0VwnMLV1_2wNWvtOyM_QoIV_Y/edit?disco=AAABHIxz8AU)
 - [Extend PodResources to include resources from Dynamic Resource Allocation (DRA) #3695](https://github.com/kubernetes/enhancements/issues/3695)
