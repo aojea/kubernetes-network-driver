@@ -68,11 +68,13 @@ type NetworkPlugin struct {
 }
 
 func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interface, nodeName string) (*NetworkPlugin, error) {
+	nameValidationRegex := regexp.MustCompile("[a-z0-9]([-a-z0-9]*[a-z0-9])?")
 	plugin := &NetworkPlugin{
 		driverName:       driverName,
 		kubeClient:       kubeClient,
 		podAllocations:   storage{cache: make(map[types.UID]resourceapi.AllocationResult)},
 		claimAllocations: storage{cache: make(map[types.UID]resourceapi.AllocationResult)},
+		regex:            nameValidationRegex,
 	}
 
 	pluginRegistrationPath := "/var/lib/kubelet/plugins_registry/" + driverName + ".sock"
