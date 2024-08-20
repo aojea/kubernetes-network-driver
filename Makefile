@@ -37,6 +37,11 @@ image:
 # docker buildx build --platform=${PLATFORMS} $(OUTPUT) --progress=$(PROGRESS) -t ${IMAGE} --pull $(EXTRA_BUILD_OPT) .
 	docker build --network host . -t ${IMAGE}
 
+push-image: image
+	docker tag ${IMAGE} aojea/kube-network-driver:stable
+	docker push ${IMAGE}
+	docker push aojea/kube-network-driver:stable
+
 kind-cluster:
 	kind create cluster --name dra --image kindest/node:latest --config kind.yaml
 
