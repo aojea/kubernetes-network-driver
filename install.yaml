@@ -56,13 +56,14 @@ spec:
     spec:
       hostNetwork: true
       hostPID: true
+      hostIPC: false
       tolerations:
       - operator: Exists
         effect: NoSchedule
       serviceAccountName: network-driver
       initContainers:
       - name: enable-nri
-        image: fedora
+        image: alpine:3.20.2
         volumeMounts:
         - mountPath: /etc
           name: etc
