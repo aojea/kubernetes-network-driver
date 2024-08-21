@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"regexp"
 	"slices"
 	"sync"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
@@ -64,17 +64,14 @@ type NetworkPlugin struct {
 	claimAllocations storage
 
 	ifaceGw string
-	regex   *regexp.Regexp
 }
 
 func Start(ctx context.Context, driverName string, kubeClient kubernetes.Interface, nodeName string) (*NetworkPlugin, error) {
-	nameValidationRegex := regexp.MustCompile("[a-z0-9]([-a-z0-9]*[a-z0-9])?")
 	plugin := &NetworkPlugin{
 		driverName:       driverName,
 		kubeClient:       kubeClient,
 		podAllocations:   storage{cache: make(map[types.UID]resourceapi.AllocationResult)},
 		claimAllocations: storage{cache: make(map[types.UID]resourceapi.AllocationResult)},
-		regex:            nameValidationRegex,
 	}
 
 	pluginRegistrationPath := "/var/lib/kubelet/plugins_registry/" + driverName + ".sock"
@@ -264,7 +261,8 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 				continue
 			}
 			// only interested in interfaces that match the regex
-			if np.regex != nil && !np.regex.MatchString(iface.Name) {
+			if len(validation.IsDNS1123Label(iface.Name)) > 0 {
+				klog.V(2).Infof("iface %s does not pass validation", iface.Name)
 				continue
 			}
 			// skip loopback interface
