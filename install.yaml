@@ -63,19 +63,16 @@ spec:
       serviceAccountName: network-driver
       initContainers:
       - name: enable-nri
-        image: alpine:3.20.2
+        image: busybox:stable
         volumeMounts:
         - mountPath: /etc
           name: etc
         securityContext:
           privileged: true
         command:
-        - /bin/bash
+        - /bin/sh
         - -c
         - |
-          set -o errexit
-          set -o pipefail
-          set -o nounset
           set -x
           if grep -q "io.containerd.nri.v1.nri"  /etc/containerd/config.toml
           then
