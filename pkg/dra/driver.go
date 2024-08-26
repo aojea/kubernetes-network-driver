@@ -2,6 +2,7 @@ package dra
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/containerd/nri/pkg/api"
 	"github.com/containerd/nri/pkg/stub"
+
+	"cloud.google.com/go/compute/metadata"
 
 	resourceapi "k8s.io/api/resource/v1alpha3"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -235,8 +238,71 @@ func (np *NetworkPlugin) StopPodSandbox(ctx context.Context, pod *api.PodSandbox
 	return nil
 }
 
+//  {
+//    "accessConfigs": [
+//      {
+//       "externalIp": "",
+//     "type": "ONE_TO_ONE_NAT"
+//    }
+//  ],
+//  "dnsServers": [
+//    "169.254.169.254"
+//  ],
+//   "forwardedIps": [],
+//   "gateway": "192.168.4.1",
+//  "ip": "192.168.4.2",
+//   "ipAliases": [],
+//   "mac": "42:01:c0:a8:04:02",
+//   "mtu": 8244,
+//   "network": "projects/628944397724/networks/aojea-dra-net-4",
+//   "subnetmask": "255.255.255.0",
+//   "targetInstanceIps": []
+// }
+
+type gceNetworkInterface struct {
+	IPv4    string   `json:"ip,omitempty"`
+	IPv6    []string `json:"ipv6,omitempty"`
+	Mac     string   `json:"mac,omitempty"`
+	MTU     int      `json:"mtu,omitempty"`
+	Network string   `json:"network,omitempty"`
+}
+
 func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 	klog.V(2).Infof("Publishing resources")
+	// Get google compute instance metadata for network interfaces
+	// https://cloud.google.com/compute/docs/metadata/predefined-metadata-keys
+
+	var gceInterfaces []gceNetworkInterface
+
+	if metadata.OnGCE() {
+		instanceName, err := metadata.InstanceNameWithContext(ctx)
+		if err != nil {
+			klog.Infof("could not get instance name on GCE .... skipping GCE network interface attributes: %v", err)
+		} else {
+			klog.Infof("Getting GCE network interface attributes for instance %s", instanceName)
+		}
+
+		// TODO Check accelerator type machines
+		instanceType, err := metadata.GetWithContext(ctx, "instance/machine-type")
+		if err != nil {
+			klog.Infof("could not get instance type on GCE .... skipping GCE network interface attributes: %v", err)
+		} else {
+			klog.Infof("Getting GCE accelerator attributes for instance type %s", instanceType)
+		}
+
+		//  curl "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/?recursive=true" -H "Metadata-Flavor: Google"
+		// [{"accessConfigs":[{"externalIp":"35.225.164.134","type":"ONE_TO_ONE_NAT"}],"dnsServers":["169.254.169.254"],"forwardedIps":[],"gateway":"10.128.0.1","ip":"10.128.0.70","ipAliases":["10.24.3.0/24"],"mac":"42:01:0a:80:00:46","mtu":1460,"network":"projects/628944397724/networks/default","subnetmask":"255.255.240.0","targetInstanceIps":[]},{"accessConfigs":[{"externalIp":"","type":"ONE_TO_ONE_NAT"}],"dnsServers":["169.254.169.254"],"forwardedIps":[],"gateway":"192.168.1.1","ip":"192.168.1.2","ipAliases":[],"mac":"42:01:c0:a8:01:02","mtu":8244,"network":"projects/628944397724/networks/aojea-dra-net-1","subnetmask":"255.255.255.0","targetInstanceIps":[]},{"accessConfigs":[{"externalIp":"","type":"ONE_TO_ONE_NAT"}],"dnsServers":["169.254.169.254"],"forwardedIps":[],"gateway":"192.168.2.1","ip":"192.168.2.2","ipAliases":[],"mac":"42:01:c0:a8:02:02","mtu":8244,"network":"projects/628944397724/networks/aojea-dra-net-2","subnetmask":"255.255.255.0","targetInstanceIps":[]},{"accessConfigs":[{"externalIp":"","type":"ONE_TO_ONE_NAT"}],"dnsServers":["169.254.169.254"],"forwardedIps":[],"gateway":"192.168.3.1","ip":"192.168.3.2","ipAliases":[],"mac":"42:01:c0:a8:03:02","mtu":8244,"network":"projects/628944397724/networks/aojea-dra-net-3","subnetmask":"255.255.255.0","targetInstanceIps":[]},{"accessConfigs":[{"externalIp":"","type":"ONE_TO_ONE_NAT"}],"dnsServers":["169.254.169.254"],"forwardedIps":[],"gateway":"192.168.4.1","ip":"192.168.4.2","ipAliases":[],"mac":"42:01:c0:a8:04:02","mtu":8244,"network":"projects/628944397724/networks/aojea-dra-net-4","subnetmask":"255.255.255.0","targetInstanceIps":[]}]
+		gceInterfacesRaw, err := metadata.GetWithContext(ctx, "instance/network-interfaces/?recursive=true&alt=json")
+		if err != nil {
+			klog.Infof("could not get network interfaces on GCE .... skipping GCE network interface attributes: %v", err)
+		} else {
+			klog.Infof("Getting GCE accelerator attributes for instance type %s", instanceType)
+			if err = json.Unmarshal([]byte(gceInterfacesRaw), &gceInterfaces); err != nil {
+				klog.Infof("could not get network interfaces on GCE .... skipping GCE network interface attributes: %v", err)
+			}
+		}
+
+	}
 
 	// Resources are published periodically or if there is a netlink notification
 	// indicating a new interfaces was added or changed
@@ -292,6 +358,8 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 				if link.PeerName == "eth0" {
 					continue
 				}
+				// Skip all veth interfaces
+				continue
 			default:
 			}
 			// iface attributes
@@ -313,6 +381,18 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 				device.Basic.Attributes["mac"] = resourceapi.DeviceAttribute{StringValue: &mac}
 				mtu := int64(iface.MTU)
 				device.Basic.Attributes["mtu"] = resourceapi.DeviceAttribute{IntValue: &mtu}
+			}
+
+			// check if there is GCE metadata associated
+			if len(gceInterfaces) > 0 {
+				mac := iface.HardwareAddr.String()
+				// this is bounded and small number O(N) is ok
+				for _, gceIf := range gceInterfaces {
+					if gceIf.Mac == mac {
+						device.Basic.Attributes["gceNetwork"] = resourceapi.DeviceAttribute{StringValue: &gceIf.Network}
+						break
+					}
+				}
 			}
 
 			device.Basic.Attributes["encapsulation"] = resourceapi.DeviceAttribute{StringValue: &linkAttrs.EncapType}

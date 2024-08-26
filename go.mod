@@ -3,11 +3,12 @@ module github.com/aojea/kubernetes-network-driver
 go 1.22.0
 
 require (
+	cloud.google.com/go/compute/metadata v0.5.0
 	github.com/Mellanox/rdmamap v1.1.0
 	github.com/containerd/nri v0.6.1
 	github.com/containernetworking/plugins v1.5.1
 	github.com/vishvananda/netlink v1.2.1-beta.2
-	golang.org/x/sys v0.21.0
+	golang.org/x/sys v0.22.0
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
 	k8s.io/client-go v0.30.3
@@ -15,7 +16,6 @@ require (
 	k8s.io/dynamic-resource-allocation v0.0.0-00010101000000-000000000000
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubelet v0.0.0
-	sigs.k8s.io/yaml v1.4.0
 )
 
 require (
@@ -61,6 +61,7 @@ require (
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
+	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
 replace (
