@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
 )
 
@@ -54,15 +53,6 @@ func getDefaultGwIf() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("not routes found")
-}
-
-func ethtoolDriverInfo(name string) (*unix.EthtoolDrvinfo, error) {
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, unix.IPPROTO_IP)
-	if err != nil {
-		return nil, err
-	}
-	defer unix.Close(fd)
-	return unix.IoctlGetEthtoolDrvinfo(fd, name)
 }
 
 func sriovTotalVFs(name string) int {

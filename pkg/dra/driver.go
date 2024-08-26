@@ -406,7 +406,10 @@ func (np *NetworkPlugin) PublishResources(ctx context.Context) {
 			// from https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin/blob/ed1c14dd4c313c7dd9fe4730a60358fbeffbfdd4/pkg/netdevice/netDeviceProvider.go#L99
 			isSRIOV := sriovTotalVFs(iface.Name) > 0
 			device.Basic.Attributes["sriov"] = resourceapi.DeviceAttribute{BoolValue: &isSRIOV}
-
+			if isSRIOV {
+				vfs := int64(sriovNumVFs(iface.Name))
+				device.Basic.Attributes["sriov_vfs"] = resourceapi.DeviceAttribute{IntValue: &vfs}
+			}
 			resources.Devices = append(resources.Devices, device)
 		}
 
