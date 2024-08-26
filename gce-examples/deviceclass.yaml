@@ -1,0 +1,66 @@
+apiVersion: resource.k8s.io/v1alpha3
+kind: DeviceClass
+metadata:
+  name: net1
+
+spec:
+  selectors:
+    - cel:
+        expression: device.driver == "networking.k8s.io"
+    - cel:
+        expression: has(device.attributes["networking.k8s.io"].gceNetwork) && device.attributes["networking.k8s.io"].gceNetwork == "projects/628944397724/networks/aojea-dra-net-1"
+  config:
+  - opaque:
+      driver: networking.k8s.io
+      parameters:
+        nccl: "true"
+---
+apiVersion: resource.k8s.io/v1alpha3
+kind: DeviceClass
+metadata:
+  name: net2
+
+spec:
+  selectors:
+    - cel:
+        expression: device.driver == "networking.k8s.io"
+    - cel:
+        expression: device.attributes["networking.k8s.io"].gceNetwork == "projects/628944397724/networks/aojea-dra-net-2"
+  config:
+  - opaque:
+      driver: networking.k8s.io
+      parameters:
+        nccl: "true"
+---
+apiVersion: resource.k8s.io/v1alpha3
+kind: DeviceClass
+metadata:
+  name: net3
+
+spec:
+  selectors:
+    - cel:
+        expression: device.driver == "networking.k8s.io"
+    - cel:
+        expression: device.attributes["networking.k8s.io"].gceNetwork == "projects/628944397724/networks/aojea-dra-net-3"
+  config:
+  - opaque:
+      driver: networking.k8s.io
+      parameters:
+        nccl: "true"
+---
+apiVersion: resource.k8s.io/v1alpha3
+kind: DeviceClass
+metadata:
+  name: net4
+spec:
+  selectors:
+    - cel:
+        expression: device.driver == "networking.k8s.io"
+    - cel:
+        expression: device.attributes["networking.k8s.io"].gceNetwork == "projects/628944397724/networks/aojea-dra-net-4"
+  config:
+  - opaque:
+      driver: networking.k8s.io
+      parameters:
+        nccl: "true"

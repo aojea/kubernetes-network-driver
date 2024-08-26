@@ -1,0 +1,19 @@
+---
+apiVersion: resource.k8s.io/v1alpha3
+kind: ResourceClaimTemplate
+metadata:
+  name: nccl-interfaces
+spec:
+  spec:
+    devices:
+      requests:
+      - name: net1
+        deviceClassName: net1
+      - name: net2
+        deviceClassName: net2
+      - name: net3
+        deviceClassName: net3
+      - name: net4
+        deviceClassName: net4
+
+
