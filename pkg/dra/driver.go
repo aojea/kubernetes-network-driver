@@ -188,6 +188,19 @@ func (np *NetworkPlugin) RunPodSandbox(_ context.Context, pod *api.PodSandbox) e
 			klog.Infof("RunPodSandbox error moving device %s to namespace %s: %v", result.Device, ns, err)
 			return err
 		}
+		rdmaDev, err := rdmamap.GetRdmaDeviceForNetdevice(result.Device)
+		if err != nil {
+			klog.Infof("RunPodSandbox error getting RDMA device %s to namespace %s: %v", result.Device, ns, err)
+			continue
+		}
+		// TODO signal this via DRA
+		if rdmaDev != "" {
+			err = hostdevice.MoveRDMALinkIn(rdmaDev, ns)
+			if err != nil {
+				klog.Infof("RunPodSandbox error getting RDMA device %s to namespace %s: %v", result.Device, ns, err)
+				continue
+			}
+		}
 	}
 	return nil
 }
@@ -233,6 +246,18 @@ func (np *NetworkPlugin) StopPodSandbox(ctx context.Context, pod *api.PodSandbox
 			// Swallow error as deleting the namespace will return the interface to the root namespace anyway
 			klog.V(2).Infof("StopPodSandbox pod %s/%s failed to deallocate interface", pod.Namespace, pod.Name)
 			return nil
+		}
+		rdmaDev, err := rdmamap.GetRdmaDeviceForNetdevice(result.Device)
+		if err != nil {
+			klog.Infof("RunPodSandbox error getting RDMA device %s to namespace %s: %v", result.Device, ns, err)
+			continue
+		}
+		if rdmaDev != "" {
+			err = hostdevice.MoveRDMALinkIn(rdmaDev, ns)
+			if err != nil {
+				klog.Infof("RunPodSandbox error getting RDMA device %s to namespace %s: %v", result.Device, ns, err)
+				continue
+			}
 		}
 	}
 	return nil
