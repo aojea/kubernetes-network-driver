@@ -3,12 +3,12 @@ module github.com/aojea/kubernetes-network-driver
 go 1.22.0
 
 require (
-	cloud.google.com/go/compute/metadata v0.5.0
+	cloud.google.com/go/compute/metadata v0.5.1
 	github.com/Mellanox/rdmamap v1.1.0
 	github.com/containerd/nri v0.6.1
 	github.com/containernetworking/plugins v1.5.1
 	github.com/vishvananda/netlink v1.2.1-beta.2
-	golang.org/x/sys v0.22.0
+	golang.org/x/sys v0.25.0
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
 	k8s.io/client-go v0.30.3
