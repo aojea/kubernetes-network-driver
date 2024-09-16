@@ -9,10 +9,10 @@ require (
 	github.com/containernetworking/plugins v1.5.1
 	github.com/vishvananda/netlink v1.2.1-beta.2
 	golang.org/x/sys v0.22.0
-	k8s.io/api v0.30.3
-	k8s.io/apimachinery v0.30.3
-	k8s.io/client-go v0.30.3
-	k8s.io/component-helpers v0.30.3
+	k8s.io/api v0.31.1
+	k8s.io/apimachinery v0.31.1
+	k8s.io/client-go v0.31.1
+	k8s.io/component-helpers v0.31.1
 	k8s.io/dynamic-resource-allocation v0.0.0-00010101000000-000000000000
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubelet v0.0.0
